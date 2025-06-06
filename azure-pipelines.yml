@@ -1,0 +1,54 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  vmName: 'your-vm-name'
+  resourceGroup: 'your-resource-group'
+  vmUsername: 'your-vm-username'
+  vmPassword: 'your-vm-password'
+
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.x'
+  displayName: 'Use Python 3.x'
+
+- script: |
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+  displayName: 'Install dependencies'
+
+- script: |
+    python setup.py build
+  displayName: 'Build application'
+
+- task: CopyFiles@2
+  inputs:
+    SourceFolder: '$(Build.SourcesDirectory)'
+    Contents: '**'
+    TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  displayName: 'Copy files to staging directory'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'
+    publishLocation: 'Container'
+  displayName: 'Publish build artifacts'
+
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: 'your-azure-subscription'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az vm run-command invoke \
+        --resource-group $(resourceGroup) \
+        --name $(vmName) \
+        --command-id RunShellScript \
+        --scripts "mkdir -p /home/$(vmUsername)/app && cd /home/$(vmUsername)/app && curl -L -o app.zip $(Build.ArtifactStagingDirectory)/drop.zip && unzip app.zip && python setup.py install"
+  displayName: 'Deploy to Azure VM'
